@@ -3,6 +3,7 @@ using System;
 using IOTAgriBackend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace IOTAgriBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260908130543_AddDevices")]
+    partial class AddDevices
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -161,40 +164,6 @@ namespace IOTAgriBackend.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("RefreshTokens");
-                });
-
-            modelBuilder.Entity("IOTAgriBackend.Models.SensorReading", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("DeviceId")
-                        .HasColumnType("uuid");
-
-                    b.Property<double?>("Humidity")
-                        .HasColumnType("double precision");
-
-                    b.Property<double?>("Ph")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTime>("RecordedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<double?>("Tds")
-                        .HasColumnType("double precision");
-
-                    b.Property<double?>("Temperature")
-                        .HasColumnType("double precision");
-
-                    b.Property<double?>("WaterLevel")
-                        .HasColumnType("double precision");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeviceId", "RecordedAt");
-
-                    b.ToTable("SensorReadings");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -351,17 +320,6 @@ namespace IOTAgriBackend.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("IOTAgriBackend.Models.SensorReading", b =>
-                {
-                    b.HasOne("IOTAgriBackend.Models.Device", "Device")
-                        .WithMany("Readings")
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Device");
-                });
-
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -416,11 +374,6 @@ namespace IOTAgriBackend.Migrations
             modelBuilder.Entity("IOTAgriBackend.Models.ApplicationUser", b =>
                 {
                     b.Navigation("Devices");
-                });
-
-            modelBuilder.Entity("IOTAgriBackend.Models.Device", b =>
-                {
-                    b.Navigation("Readings");
                 });
 #pragma warning restore 612, 618
         }

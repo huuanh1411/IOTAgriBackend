@@ -133,3 +133,5 @@ C:\Users\ADMIN\Documents\IOTAgriBackend\IOTAgriBackend\obj\Debug\net10.0\ref\IOT
 C:\Users\ADMIN\Documents\IOTAgriBackend\IOTAgriBackend\bin\Debug\net10.0\Swashbuckle.AspNetCore.Swagger.dll
 C:\Users\ADMIN\Documents\IOTAgriBackend\IOTAgriBackend\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerGen.dll
 C:\Users\ADMIN\Documents\IOTAgriBackend\IOTAgriBackend\bin\Debug\net10.0\Swashbuckle.AspNetCore.SwaggerUI.dll
+C:\Users\ADMIN\Documents\IOTAgriBackend\IOTAgriBackend\obj\Debug\net10.0\IOTAgriBackend.sourcelink.json
+C:\Users\ADMIN\Documents\IOTAgriBackend\IOTAgriBackend\bin\Debug\net10.0\MQTTnet.dll

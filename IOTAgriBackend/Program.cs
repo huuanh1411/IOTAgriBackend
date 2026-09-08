@@ -77,6 +77,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddHostedService<MqttIngestionService>();
 
 var app = builder.Build();
 
@@ -99,6 +100,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapAuthEndpoints();
+app.MapDeviceEndpoints();
+app.MapSensorEndpoints();
+app.MapDashboardEndpoints();
 
 var summaries = new[]
 {

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("IOTAgriBackend")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c282eda7e454b81e1fcac515707753f2d54b82e2")]
 [assembly: System.Reflection.AssemblyProductAttribute("IOTAgriBackend")]
 [assembly: System.Reflection.AssemblyTitleAttribute("IOTAgriBackend")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
