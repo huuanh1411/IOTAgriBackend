@@ -1,0 +1,42 @@
+name: iotagri_app
+description: "Ung dung dong hanh cho he thong giam sat nong nghiep/thuy canh IoT (AgriSense)."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Networking
+  dio: ^5.7.0
+
+  # Secure local storage cho access/refresh token
+  flutter_secure_storage: ^9.2.2
+
+  # State management
+  provider: ^6.1.2
+
+  # Routing + auth guard
+  go_router: ^14.6.1
+
+  # Bieu do du lieu cam bien tong hop
+  fl_chart: ^0.69.0
+
+  # Dinh dang ngay gio
+  intl: ^0.19.0
+
+  # Font chu
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
