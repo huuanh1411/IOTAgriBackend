@@ -15,6 +15,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<SensorReading> SensorReadings => Set<SensorReading>();
+    public DbSet<PumpCommand> PumpCommands => Set<PumpCommand>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -33,6 +34,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         builder.Entity<Device>(entity =>
         {
             entity.HasIndex(d => d.DeviceKey).IsUnique();
+            entity.HasIndex(d => d.ProvisionedHardwareId).IsUnique();
 
             entity.HasOne(d => d.Owner)
                 .WithMany(u => u.Devices)
@@ -48,6 +50,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(r => new { r.DeviceId, r.RecordedAt });
+        });
+
+        builder.Entity<PumpCommand>(entity =>
+        {
+            entity.Property(c => c.FailureReason).HasMaxLength(512);
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_PumpCommands_DurationSeconds",
+                "\"DurationSeconds\" IS NULL OR \"DurationSeconds\" > 0"));
+            entity.HasIndex(c => new { c.DeviceId, c.IssuedAt });
+
+            entity.HasOne(c => c.Device)
+                .WithMany(d => d.PumpCommands)
+                .HasForeignKey(c => c.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
         });
     }
 }

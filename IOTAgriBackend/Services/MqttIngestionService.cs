@@ -2,16 +2,19 @@ using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using IOTAgriBackend.Data;
+using IOTAgriBackend.Dtos.Pumps;
 using IOTAgriBackend.Dtos.Sensors;
 using IOTAgriBackend.Models;
 using Microsoft.EntityFrameworkCore;
 using MQTTnet;
+using MQTTnet.Protocol;
 
 namespace IOTAgriBackend.Services;
 
-// Subscribes to devices/{deviceKey}/readings on the configured MQTT broker and persists incoming sensor data.
+// Handles MQTT readings, pump status, and outbound pump commands.
 public class MqttIngestionService : BackgroundService
 {
+    private const string PumpStatusTopicFilter = "devices/+/pump-status";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly IServiceScopeFactory _scopeFactory;
@@ -39,7 +42,7 @@ public class MqttIngestionService : BackgroundService
         var username = mqttSection["Username"];
         var password = mqttSection["Password"];
         var clientId = mqttSection["ClientId"] ?? $"iotagribackend-{Guid.NewGuid():N}";
-        var topicFilter = mqttSection["ReadingsTopicFilter"] ?? "devices/+/readings";
+        var readingsTopicFilter = mqttSection["ReadingsTopicFilter"] ?? "devices/+/readings";
 
         var optionsBuilder = new MqttClientOptionsBuilder()
             .WithTcpServer(host, port)
@@ -70,11 +73,12 @@ public class MqttIngestionService : BackgroundService
 
                     var subscribeOptions = new MqttClientFactory()
                         .CreateSubscribeOptionsBuilder()
-                        .WithTopicFilter(topicFilter)
+                        .WithTopicFilter(readingsTopicFilter)
+                        .WithTopicFilter(PumpStatusTopicFilter)
                         .Build();
 
                     await _mqttClient.SubscribeAsync(subscribeOptions, stoppingToken);
-                    _logger.LogInformation("MQTT connected to {Host}:{Port} and subscribed to {Topic}", host, port, topicFilter);
+                    _logger.LogInformation("MQTT connected to {Host}:{Port} and subscribed to {ReadingsTopic} and {PumpStatusTopic}", host, port, readingsTopicFilter, PumpStatusTopicFilter);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -92,48 +96,123 @@ public class MqttIngestionService : BackgroundService
         {
             var topic = args.ApplicationMessage.Topic;
             var segments = topic.Split('/');
-            if (segments.Length < 3 || segments[0] != "devices" || segments[2] != "readings")
+            if (segments.Length != 3 || segments[0] != "devices")
             {
                 return;
             }
 
             var deviceKey = segments[1];
             var payloadBytes = args.ApplicationMessage.Payload.ToArray();
-            var request = JsonSerializer.Deserialize<SensorReadingRequest>(Encoding.UTF8.GetString(payloadBytes), JsonOptions);
-            if (request is null)
+            if (segments[2] == "readings")
             {
+                await ProcessReadingAsync(deviceKey, payloadBytes);
                 return;
             }
 
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-            var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceKey == deviceKey);
-            if (device is null)
+            if (segments[2] == "pump-status")
             {
-                _logger.LogWarning("Received MQTT reading for unknown device key on topic {Topic}.", topic);
-                return;
+                await ProcessPumpStatusAsync(deviceKey, payloadBytes, topic);
             }
-
-            var reading = new SensorReading
-            {
-                DeviceId = device.Id,
-                Temperature = request.Temperature,
-                Humidity = request.Humidity,
-                Ph = request.Ph,
-                Tds = request.Tds,
-                WaterLevel = request.WaterLevel,
-            };
-
-            db.SensorReadings.Add(reading);
-            device.IsOnline = true;
-            device.LastSeenAt = reading.RecordedAt;
-            await db.SaveChangesAsync();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to process incoming MQTT sensor reading.");
+            _logger.LogError(ex, "Failed to process incoming MQTT message.");
         }
+    }
+
+    public async Task PublishPumpCommandAsync(string deviceKey, PumpCommand command, CancellationToken cancellationToken)
+    {
+        if (!_mqttClient.IsConnected)
+        {
+            throw new InvalidOperationException("MQTT client is not connected.");
+        }
+
+        var message = new MqttApplicationMessageBuilder()
+            .WithTopic($"devices/{deviceKey}/commands/pump")
+            .WithPayload(JsonSerializer.Serialize(new PumpCommandMessage(command.Id, command.IsOn, command.DurationSeconds), JsonOptions))
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build();
+
+        await _mqttClient.PublishAsync(message, cancellationToken);
+    }
+
+    private async Task ProcessReadingAsync(string deviceKey, byte[] payloadBytes)
+    {
+        var request = JsonSerializer.Deserialize<SensorReadingRequest>(Encoding.UTF8.GetString(payloadBytes), JsonOptions);
+        if (request is null)
+        {
+            return;
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceKey == deviceKey);
+        if (device is null)
+        {
+            _logger.LogWarning("Received MQTT reading for unknown device key.");
+            return;
+        }
+
+        var reading = new SensorReading
+        {
+            DeviceId = device.Id,
+            Temperature = request.Temperature,
+            Humidity = request.Humidity,
+            Ph = request.Ph,
+            Tds = request.Tds,
+            WaterLevel = request.WaterLevel,
+        };
+
+        db.SensorReadings.Add(reading);
+        device.IsOnline = true;
+        device.LastSeenAt = reading.RecordedAt;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task ProcessPumpStatusAsync(string deviceKey, byte[] payloadBytes, string topic)
+    {
+        if (payloadBytes.Length > 1024)
+        {
+            _logger.LogWarning("Ignored oversized pump status on topic {Topic}.", topic);
+            return;
+        }
+
+        var status = JsonSerializer.Deserialize<PumpStatusMessage>(Encoding.UTF8.GetString(payloadBytes), JsonOptions);
+        if (status is null)
+        {
+            return;
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceKey == deviceKey);
+        if (device is null)
+        {
+            _logger.LogWarning("Received pump status for unknown device key on topic {Topic}.", topic);
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        device.IsPumpOn = status.IsOn;
+        device.PumpStatusUpdatedAt = now;
+
+        if (status.CommandId is Guid commandId && commandId != Guid.Empty)
+        {
+            var command = await db.PumpCommands.FirstOrDefaultAsync(c => c.Id == commandId && c.DeviceId == device.Id);
+            if (command is null)
+            {
+                _logger.LogWarning("Received pump status for unknown command {CommandId} on topic {Topic}.", commandId, topic);
+            }
+            else
+            {
+                command.Status = PumpCommandStatus.Acknowledged;
+                command.AcknowledgedAt = now;
+                command.AcknowledgedIsOn = status.IsOn;
+            }
+        }
+
+        await db.SaveChangesAsync();
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

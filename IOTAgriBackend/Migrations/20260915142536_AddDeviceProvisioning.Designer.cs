@@ -3,6 +3,7 @@ using System;
 using IOTAgriBackend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace IOTAgriBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260915142536_AddDeviceProvisioning")]
+    partial class AddDeviceProvisioning
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -106,9 +109,6 @@ namespace IOTAgriBackend.Migrations
                     b.Property<bool>("IsOnline")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsPumpOn")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime?>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -132,9 +132,6 @@ namespace IOTAgriBackend.Migrations
                     b.Property<string>("ProvisioningCodeHash")
                         .HasColumnType("text");
 
-                    b.Property<DateTime?>("PumpStatusUpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.HasKey("Id");
 
                     b.HasIndex("DeviceKey")
@@ -146,50 +143,6 @@ namespace IOTAgriBackend.Migrations
                         .IsUnique();
 
                     b.ToTable("Devices");
-                });
-
-            modelBuilder.Entity("IOTAgriBackend.Models.PumpCommand", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("AcknowledgedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool?>("AcknowledgedIsOn")
-                        .HasColumnType("boolean");
-
-                    b.Property<Guid>("DeviceId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int?>("DurationSeconds")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("FailureReason")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
-                    b.Property<bool>("IsOn")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("IssuedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Source")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeviceId", "IssuedAt");
-
-                    b.ToTable("PumpCommands", t =>
-                        {
-                            t.HasCheckConstraint("CK_PumpCommands_DurationSeconds", "\"DurationSeconds\" IS NULL OR \"DurationSeconds\" > 0");
-                        });
                 });
 
             modelBuilder.Entity("IOTAgriBackend.Models.RefreshToken", b =>
@@ -405,17 +358,6 @@ namespace IOTAgriBackend.Migrations
                     b.Navigation("Owner");
                 });
 
-            modelBuilder.Entity("IOTAgriBackend.Models.PumpCommand", b =>
-                {
-                    b.HasOne("IOTAgriBackend.Models.Device", "Device")
-                        .WithMany("PumpCommands")
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Device");
-                });
-
             modelBuilder.Entity("IOTAgriBackend.Models.RefreshToken", b =>
                 {
                     b.HasOne("IOTAgriBackend.Models.ApplicationUser", "User")
@@ -496,8 +438,6 @@ namespace IOTAgriBackend.Migrations
 
             modelBuilder.Entity("IOTAgriBackend.Models.Device", b =>
                 {
-                    b.Navigation("PumpCommands");
-
                     b.Navigation("Readings");
                 });
 #pragma warning restore 612, 618

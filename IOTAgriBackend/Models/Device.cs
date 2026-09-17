@@ -15,6 +15,14 @@ public class Device
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsOnline { get; set; }
     public DateTime? LastSeenAt { get; set; }
+    public bool IsPumpOn { get; set; }
+    public DateTime? PumpStatusUpdatedAt { get; set; }
+
+    public string? ProvisioningCodeHash { get; set; }
+    public DateTime? ProvisioningCodeExpiresAt { get; set; }
+    public string? ProvisionedHardwareId { get; set; }
+    public DateTime? ProvisionedAt { get; set; }
 
     public ICollection<SensorReading> Readings { get; set; } = new List<SensorReading>();
+    public ICollection<PumpCommand> PumpCommands { get; set; } = new List<PumpCommand>();
 }

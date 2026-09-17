@@ -15,15 +15,13 @@ public static class SensorEndpoints
 
     public static IEndpointRouteBuilder MapSensorEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGroup("/api/devices/{deviceId:guid}/readings")
+        var group = app.MapGroup("/api/devices/{deviceId:guid}/readings")
             .WithTags("Sensors")
-            .RequireAuthorization()
-            .MapGet("/", GetReadingsAsync);
-
-        app.MapGroup("/api/devices/{deviceId:guid}/readings")
-            .WithTags("Sensors")
-            .RequireAuthorization()
-            .MapGet("/aggregated", GetAggregatedReadingsAsync);
+            .RequireAuthorization();
+        group.MapGet("/", GetReadingsAsync);
+        group.MapGet("/aggregated", GetAggregatedReadingsAsync);
+        group.MapGet("/medians/hourly", GetHourlyMediansAsync);
+        group.MapGet("/medians/daily", GetDailyMediansAsync);
 
         return app;
     }
@@ -106,4 +104,86 @@ public static class SensorEndpoints
 
         return Results.Ok(buckets);
     }
+
+    private static async Task<IResult> GetHourlyMediansAsync(
+        Guid deviceId,
+        DateOnly date,
+        ClaimsPrincipal principal,
+        ApplicationDbContext db)
+    {
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var ownsDevice = await db.Devices.AnyAsync(d => d.Id == deviceId && d.OwnerId == userId);
+        if (!ownsDevice)
+        {
+            return Results.NotFound();
+        }
+
+        var start = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var buckets = await GetMedianBucketsAsync(db, deviceId, start, start.AddDays(1), "hour");
+        return Results.Ok(SensorMedianBuckets.Complete(
+            start,
+            24,
+            TimeSpan.FromHours(1),
+            buckets.ToDictionary(bucket => bucket.BucketStart)));
+    }
+
+    private static async Task<IResult> GetDailyMediansAsync(
+        Guid deviceId,
+        DateOnly weekStart,
+        ClaimsPrincipal principal,
+        ApplicationDbContext db)
+    {
+        if (weekStart.DayOfWeek != DayOfWeek.Monday)
+        {
+            return Results.BadRequest(new { error = "weekStart must be a Monday." });
+        }
+
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var ownsDevice = await db.Devices.AnyAsync(d => d.Id == deviceId && d.OwnerId == userId);
+        if (!ownsDevice)
+        {
+            return Results.NotFound();
+        }
+
+        var start = weekStart.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var buckets = await GetMedianBucketsAsync(db, deviceId, start, start.AddDays(7), "day");
+        return Results.Ok(SensorMedianBuckets.Complete(
+            start,
+            7,
+            TimeSpan.FromDays(1),
+            buckets.ToDictionary(bucket => bucket.BucketStart)));
+    }
+
+    private static Task<List<SensorMedianBucket>> GetMedianBucketsAsync(
+        ApplicationDbContext db,
+        Guid deviceId,
+        DateTime rangeStart,
+        DateTime rangeEnd,
+        string interval)
+        => db.Database.SqlQueryRaw<SensorMedianBucket>(
+            """
+            SELECT date_trunc({0}, "RecordedAt") AS "BucketStart",
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY "Temperature") AS "MedianTemperature",
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY "Humidity") AS "MedianHumidity",
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY "Ph") AS "MedianPh",
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY "Tds") AS "MedianTds",
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY "WaterLevel") AS "MedianWaterLevel",
+                   CAST(COUNT(*) AS integer) AS "SampleCount"
+            FROM "SensorReadings"
+            WHERE "DeviceId" = {1} AND "RecordedAt" >= {2} AND "RecordedAt" < {3}
+            GROUP BY date_trunc({0}, "RecordedAt")
+            ORDER BY 1
+            """,
+            interval, deviceId, rangeStart, rangeEnd)
+            .ToListAsync();
 }

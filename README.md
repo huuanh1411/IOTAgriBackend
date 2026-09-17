@@ -32,30 +32,28 @@ Backend API for an IoT hydroponics/agriculture monitoring system. Built with ASP
 
 ## Local Development
 
-**Requirements:** .NET 10 SDK, Docker (for PostgreSQL + Mosquitto)
+**Requirements:** Docker Desktop. The Compose stack includes the API, PostgreSQL, and Mosquitto.
 
 ```powershell
-# Start dependencies
-docker start iotagri-postgres iotagri-mosquitto
+# Copy the deployment settings, then set MQTT_PUBLIC_HOST to this PC's LAN IPv4.
+Copy-Item .env.example .env
+notepad .env
 
-# Run the API
-cd IOTAgriBackend
-dotnet run
+# Start the complete local stack.
+docker compose up -d --build
+Invoke-WebRequest http://localhost:8080/health
 ```
 
-Swagger UI is available at `/swagger` when running in Development.
+Swagger UI is available at `http://localhost:8080/swagger`.
 
 ### Connecting an ESP32
 
-1. Create a device via `POST /api/devices` (JWT-authenticated) and note the returned `deviceKey`.
-2. Point the device's MQTT client at the broker (`host:1883` in dev, no TLS/auth) and publish to:
-   ```
-   devices/{deviceKey}/readings
-   ```
-   with a JSON payload like:
-   ```json
-   { "temperature": 26.5, "humidity": 61.2, "ph": 6.1, "tds": 850, "waterLevel": 42.0 }
-   ```
+1. Register and sign in through Swagger, then create a device with `POST /api/devices`.
+2. Create its 15-minute, one-use setup code with authenticated `POST /api/devices/{deviceId}/provisioning-code`.
+3. Upload [`firmware/ESP32DeviceSetup/ESP32DeviceSetup.ino`](firmware/ESP32DeviceSetup/ESP32DeviceSetup.ino), join Wi-Fi network `IOTAgri-Setup`, and open the shown setup page.
+4. Enter Wi-Fi details, `http://<PC-LAN-IP>:8080`, and the setup code. The ESP32 saves its settings and publishes readings every 10 seconds.
+
+The local Mosquitto broker is anonymous and plaintext for trusted LAN development only. Do not expose port 1883 to the internet. A future production broker must use per-device credentials and TLS.
 
 ## Planned / Not Yet Implemented
 

@@ -1,0 +1,9 @@
+.git
+.github
+.codex
+.agents
+graphify-out
+**/bin
+**/obj
+.env
+IOTAgriBackend/appsettings.Development.json

@@ -1,9 +1,11 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using IOTAgriBackend.Data;
 using IOTAgriBackend.Endpoints;
 using IOTAgriBackend.Models;
 using IOTAgriBackend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -22,19 +24,17 @@ builder.Services.AddSwaggerGen(options =>
 
     var jwtScheme = new OpenApiSecurityScheme
     {
-        Name = "Authorization",
-        Description = "Enter: Bearer {your JWT access token}",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer",
+        Description = "Paste the JWT access token returned by /api/auth/login.",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
     };
 
     options.AddSecurityDefinition("Bearer", jwtScheme);
-    var securityRequirement = new OpenApiSecurityRequirement
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
     {
-        { new OpenApiSecuritySchemeReference("Bearer", null), new List<string>() },
-    };
-    options.AddSecurityRequirement(_ => securityRequirement);
+        { new OpenApiSecuritySchemeReference("Bearer", document), new List<string>() },
+    });
 });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -76,11 +76,27 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
 });
 
+builder.Services.AddRateLimiter(options => options.AddPolicy("deviceClaims", context =>
+    RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true,
+        })));
+
 builder.Services.AddScoped<ITokenService, TokenService>();
-builder.Services.AddHostedService<MqttIngestionService>();
+builder.Services.AddSingleton<MqttIngestionService>();
+builder.Services.AddHostedService(services => services.GetRequiredService<MqttIngestionService>());
 
 var app = builder.Build();
 
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.MigrateAsync();
+}
 await RoleSeeder.SeedAsync(app.Services);
 
 // Configure the HTTP request pipeline.
@@ -98,11 +114,17 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapAuthEndpoints();
 app.MapDeviceEndpoints();
+app.MapDeviceProvisioningEndpoints();
 app.MapSensorEndpoints();
 app.MapDashboardEndpoints();
+app.MapGet("/health", async (ApplicationDbContext db, CancellationToken cancellationToken) =>
+    await db.Database.CanConnectAsync(cancellationToken)
+        ? Results.Ok(new { status = "ready" })
+        : Results.Problem("Database is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable));
 
 var summaries = new[]
 {
