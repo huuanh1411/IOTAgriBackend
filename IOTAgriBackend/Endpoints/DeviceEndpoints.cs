@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Data;
 using IOTAgriBackend.Data;
 using IOTAgriBackend.Dtos.Alerts;
 using IOTAgriBackend.Dtos.Devices;
@@ -23,6 +24,10 @@ public static class DeviceEndpoints
         group.MapDelete("/{id:guid}", DeleteAsync);
         group.MapPost("/{id:guid}/pump/commands", SendPumpCommandAsync);
         group.MapGet("/{id:guid}/pump-commands", GetPumpCommandsAsync);
+        group.MapGet("/{id:guid}/pump-schedules", ListPumpSchedulesAsync);
+        group.MapPost("/{id:guid}/pump-schedules", CreatePumpScheduleAsync);
+        group.MapPut("/{id:guid}/pump-schedules/{scheduleId:guid}", UpdatePumpScheduleAsync);
+        group.MapDelete("/{id:guid}/pump-schedules/{scheduleId:guid}", DeletePumpScheduleAsync);
         group.MapGet("/{id:guid}/alert-settings", GetAlertSettingsAsync);
         group.MapPut("/{id:guid}/alert-settings", UpdateAlertSettingsAsync);
         group.MapGet("/{id:guid}/alerts", GetAlertsAsync);
@@ -273,6 +278,132 @@ public static class DeviceEndpoints
             .ToListAsync();
 
         return Results.Ok(new PumpCommandHistoryPage(items, query.Page, query.PageSize, totalCount));
+    }
+
+    private static async Task<IResult> ListPumpSchedulesAsync(Guid id, ClaimsPrincipal principal, ApplicationDbContext db)
+    {
+        var userId = GetUserId(principal);
+        if (userId is null) return Results.Unauthorized();
+
+        var ownsDevice = await db.Devices.AnyAsync(device => device.Id == id && device.OwnerId == userId);
+        if (!ownsDevice) return Results.NotFound();
+
+        var schedules = await db.PumpSchedules.Where(schedule => schedule.DeviceId == id)
+            .OrderBy(schedule => schedule.StartTime).ThenBy(schedule => schedule.Id)
+            .ToListAsync();
+        return Results.Ok(schedules.Select(ToResponse).ToList());
+    }
+
+    private static async Task<IResult> CreatePumpScheduleAsync(
+        Guid id,
+        PumpScheduleRequest request,
+        ClaimsPrincipal principal,
+        ApplicationDbContext db,
+        IConfiguration configuration)
+    {
+        var userId = GetUserId(principal);
+        if (userId is null) return Results.Unauthorized();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        if (!await db.Devices.AnyAsync(device => device.Id == id && device.OwnerId == userId)) return Results.NotFound();
+
+        var maximumDurationSeconds = configuration.GetValue<int?>("PumpControl:MaximumDurationSeconds") ?? 600;
+        if (maximumDurationSeconds <= 0) return Results.Problem("PumpControl:MaximumDurationSeconds must be positive.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        var error = PumpScheduleRules.Validate(request.IsEnabled, request.WeekdayMask, request.StartTime, request.DurationSeconds, request.TimeZone, maximumDurationSeconds);
+        if (error is not null) return Results.BadRequest(new { error });
+
+        var schedule = new PumpSchedule
+        {
+            DeviceId = id,
+            IsEnabled = request.IsEnabled!.Value,
+            WeekdayMask = request.WeekdayMask,
+            StartTime = request.StartTime!.Value,
+            DurationSeconds = request.DurationSeconds,
+            TimeZone = request.TimeZone!,
+        };
+        var existingSchedules = await db.PumpSchedules.Where(existing => existing.DeviceId == id).ToListAsync();
+        if (PumpScheduleRules.Overlaps(schedule, existingSchedules)) return Results.BadRequest(new { error = "Schedule overlaps an enabled schedule for this device." });
+
+        db.PumpSchedules.Add(schedule);
+        var saveResult = await SavePumpScheduleAsync(db, transaction);
+        if (saveResult is not null) return saveResult;
+        return Results.Created($"/api/devices/{id}/pump-schedules/{schedule.Id}", ToResponse(schedule));
+    }
+
+    private static async Task<IResult> UpdatePumpScheduleAsync(
+        Guid id,
+        Guid scheduleId,
+        PumpScheduleRequest request,
+        ClaimsPrincipal principal,
+        ApplicationDbContext db,
+        IConfiguration configuration)
+    {
+        var userId = GetUserId(principal);
+        if (userId is null) return Results.Unauthorized();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var schedule = await db.PumpSchedules.FirstOrDefaultAsync(candidate =>
+            candidate.Id == scheduleId && candidate.DeviceId == id && candidate.Device!.OwnerId == userId);
+        if (schedule is null) return Results.NotFound();
+
+        var maximumDurationSeconds = configuration.GetValue<int?>("PumpControl:MaximumDurationSeconds") ?? 600;
+        if (maximumDurationSeconds <= 0) return Results.Problem("PumpControl:MaximumDurationSeconds must be positive.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+        var error = PumpScheduleRules.Validate(request.IsEnabled, request.WeekdayMask, request.StartTime, request.DurationSeconds, request.TimeZone, maximumDurationSeconds);
+        if (error is not null) return Results.BadRequest(new { error });
+
+        schedule.IsEnabled = request.IsEnabled!.Value;
+        schedule.WeekdayMask = request.WeekdayMask;
+        schedule.StartTime = request.StartTime!.Value;
+        schedule.DurationSeconds = request.DurationSeconds;
+        schedule.TimeZone = request.TimeZone!;
+
+        var existingSchedules = await db.PumpSchedules.Where(existing => existing.DeviceId == id && existing.Id != scheduleId).ToListAsync();
+        if (PumpScheduleRules.Overlaps(schedule, existingSchedules)) return Results.BadRequest(new { error = "Schedule overlaps an enabled schedule for this device." });
+
+        var saveResult = await SavePumpScheduleAsync(db, transaction);
+        if (saveResult is not null) return saveResult;
+        return Results.Ok(ToResponse(schedule));
+    }
+
+    private static async Task<IResult> DeletePumpScheduleAsync(Guid id, Guid scheduleId, ClaimsPrincipal principal, ApplicationDbContext db)
+    {
+        var userId = GetUserId(principal);
+        if (userId is null) return Results.Unauthorized();
+
+        var schedule = await db.PumpSchedules.FirstOrDefaultAsync(candidate =>
+            candidate.Id == scheduleId && candidate.DeviceId == id && candidate.Device!.OwnerId == userId);
+        if (schedule is null) return Results.NotFound();
+
+        db.PumpSchedules.Remove(schedule);
+        await db.SaveChangesAsync();
+        return Results.NoContent();
+    }
+
+    private static PumpScheduleResponse ToResponse(PumpSchedule schedule) => new(
+        schedule.Id,
+        schedule.IsEnabled,
+        schedule.WeekdayMask,
+        schedule.StartTime,
+        schedule.DurationSeconds,
+        schedule.TimeZone,
+        schedule.LastDispatchedOccurrenceUtc,
+        schedule.CreatedAt);
+
+    private static async Task<IResult?> SavePumpScheduleAsync(
+        ApplicationDbContext db,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction)
+    {
+        try
+        {
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return null;
+        }
+        catch (Npgsql.PostgresException exception) when (exception.SqlState == "40001")
+        {
+            return Results.Conflict(new { error = "Schedule changed concurrently. Retry." });
+        }
     }
 
     private static async Task<IResult> GetAlertSettingsAsync(

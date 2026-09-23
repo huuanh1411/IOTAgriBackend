@@ -8,14 +8,14 @@ Add owner-authorized manual pump control and recurring pump schedules for a clai
 
 - Reuse existing JWT ownership check, `Device`, EF Core, Minimal API, MQTTnet, and firmware. No new package.
 - Commands use `devices/{deviceKey}/commands/pump`; device status uses `devices/{deviceKey}/pump-status`. Commands are non-retained and contain an idempotency ID, `on`, and optional duration seconds.
-- Schedules store local weekday mask, start time, duration, and IANA time zone. Scheduler converts due runs to UTC. Device defaults pump OFF after reboot and auto-stops after commanded duration.
-- Schedule dispatch runs as a separate worker in production. Do not run it in every API replica; local development may run one worker with the API.
+- Schedules store local weekday mask (Sunday `1` through Saturday `64`), start time, duration, and IANA time zone. Disabled schedules may overlap because they cannot dispatch. Scheduler converts due runs to UTC. Device defaults pump OFF after reboot and auto-stops after commanded duration.
+- Schedule dispatch is disabled by default. Current one-replica deployments may enable its hosted worker; before API horizontal scaling, enable it on exactly one instance or extract a separate worker.
 
 ## Task List
 
 ### Phase 1: Safe manual control
 
-- [ ] Task 1: Add pump command/status contract and persistence
+- [x] Task 1: Add pump command/status contract and persistence
   - Define one pump state record on `Device` and a command/audit record with command ID, requested state, duration, issued time, acknowledgement time, and result.
   - Add EF mapping, migration, and request/response DTOs. Limit duration to a hardware-safe maximum.
   - Acceptance: migration applies; command IDs are unique; no owner can access another owner's device records.
@@ -24,7 +24,7 @@ Add owner-authorized manual pump control and recurring pump schedules for a clai
   - Files likely touched: `Models/Device.cs`, new pump model/DTO files, `Data/ApplicationDbContext.cs`, `Migrations/`.
   - Estimated scope: Medium (4-5 files).
 
-- [ ] Task 2: Publish manual commands and receive device status
+- [x] Task 2: Publish manual commands and receive device status
   - Add authorized `POST /api/devices/{id}/pump/commands`; publish only after device ownership validation.
   - Extend MQTT worker to subscribe to pump status, validate topic/device key, and persist acknowledgement/state. Reuse one MQTT client service for readings, commands, and status.
   - Acceptance: valid owner command publishes exact topic/payload; unknown device/status is ignored and logged; acknowledgement updates matching command.
@@ -50,21 +50,21 @@ Add owner-authorized manual pump control and recurring pump schedules for a clai
 
 ### Phase 2: Recurring schedules
 
-- [ ] Task 4: Add schedule storage and owner API
+- [x] Task 4: Add schedule storage and owner API
   - Add schedule model: device ID, enabled, weekday mask, local start time, duration seconds, IANA time zone, and last dispatched occurrence.
   - Add owner-scoped create/list/update/delete endpoints under `/api/devices/{id}/pump-schedules`.
   - Reject invalid weekday mask, time zone, duration, and overlapping schedules for same device.
   - Acceptance: owner CRUD works; invalid/overlapping schedules return validation errors; schedules cannot cross owners.
-  - Verification: focused schedule validation tests, including daylight-saving transition cases; `dotnet test`.
+  - Verification: focused validation and weekly-overlap tests; authenticated Docker CRUD/owner-isolation check. Daylight-saving occurrence tests belong to Task 5, where due-time conversion exists.
   - Dependencies: Task 1.
   - Files likely touched: new schedule model/DTOs, `ApplicationDbContext.cs`, `DeviceEndpoints.cs`, migration.
   - Estimated scope: Medium (5 files).
 
-- [ ] Task 5: Dispatch due schedules once
-  - Add one background schedule-dispatch worker. It finds due enabled schedules, atomically records each occurrence as dispatched, then uses manual-command publisher.
+- [x] Task 5: Dispatch due schedules once
+  - Add one background schedule-dispatch worker. It finds due enabled schedules, atomically claims each occurrence, uses manual-command publisher, and marks it dispatched only after a successful publish.
   - Publish one duration-bound ON command per occurrence. Log publish failure without marking unsent occurrence complete.
   - Acceptance: due schedule sends one command; polling cannot duplicate same occurrence; disabled schedule sends none.
-  - Verification: focused due-time/idempotency tests; local run with short schedule and Mosquitto; `dotnet test`; `dotnet build`.
+  - Verification: focused due-time/DST/disabled-schedule tests; local Compose run recorded one `Scheduled` MQTT command with a 60-second bound; `dotnet test`; `dotnet build`.
   - Dependencies: Tasks 2 and 4.
   - Files likely touched: new scheduler service, command publisher, `Program.cs`, tests.
   - Estimated scope: Medium (4-5 files).
@@ -74,6 +74,10 @@ Add owner-authorized manual pump control and recurring pump schedules for a clai
 - [ ] Manual and scheduled commands share one command path.
 - [ ] Device remains safe if backend is unavailable or firmware restarts.
 - [ ] API and production worker deployment do not dispatch duplicate schedules.
+
+## Current Safety Boundary
+
+- ESP32 relay control and acknowledgement remain deferred. `PumpScheduling:Enabled` defaults to `false`; enable it only after firmware command deduplication and relay fail-safe tests pass.
 
 ## Risks and Mitigations
 

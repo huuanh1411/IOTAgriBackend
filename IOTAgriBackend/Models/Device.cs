@@ -27,5 +27,6 @@ public class Device
 
     public ICollection<SensorReading> Readings { get; set; } = new List<SensorReading>();
     public ICollection<PumpCommand> PumpCommands { get; set; } = new List<PumpCommand>();
+    public ICollection<PumpSchedule> PumpSchedules { get; set; } = new List<PumpSchedule>();
     public ICollection<DeviceAlert> Alerts { get; set; } = new List<DeviceAlert>();
 }

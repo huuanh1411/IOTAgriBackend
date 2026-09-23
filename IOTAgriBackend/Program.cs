@@ -90,6 +90,7 @@ builder.Services.AddRateLimiter(options => options.AddPolicy("deviceClaims", con
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddSingleton<MqttIngestionService>();
 builder.Services.AddHostedService(services => services.GetRequiredService<MqttIngestionService>());
+builder.Services.AddHostedService<PumpScheduleDispatchService>();
 
 var app = builder.Build();
 

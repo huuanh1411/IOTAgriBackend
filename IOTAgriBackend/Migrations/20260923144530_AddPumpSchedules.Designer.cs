@@ -3,6 +3,7 @@ using System;
 using IOTAgriBackend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace IOTAgriBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923144530_AddPumpSchedules")]
+    partial class AddPumpSchedules
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -318,35 +321,6 @@ namespace IOTAgriBackend.Migrations
                         });
                 });
 
-            modelBuilder.Entity("IOTAgriBackend.Models.PumpScheduleOccurrence", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("CommandId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("DispatchedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("OccurrenceUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ScheduleId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CommandId")
-                        .IsUnique();
-
-                    b.HasIndex("ScheduleId", "OccurrenceUtc")
-                        .IsUnique();
-
-                    b.ToTable("PumpScheduleOccurrences");
-                });
-
             modelBuilder.Entity("IOTAgriBackend.Models.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -592,17 +566,6 @@ namespace IOTAgriBackend.Migrations
                     b.Navigation("Device");
                 });
 
-            modelBuilder.Entity("IOTAgriBackend.Models.PumpScheduleOccurrence", b =>
-                {
-                    b.HasOne("IOTAgriBackend.Models.PumpSchedule", "Schedule")
-                        .WithMany("Occurrences")
-                        .HasForeignKey("ScheduleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Schedule");
-                });
-
             modelBuilder.Entity("IOTAgriBackend.Models.RefreshToken", b =>
                 {
                     b.HasOne("IOTAgriBackend.Models.ApplicationUser", "User")
@@ -690,11 +653,6 @@ namespace IOTAgriBackend.Migrations
                     b.Navigation("PumpSchedules");
 
                     b.Navigation("Readings");
-                });
-
-            modelBuilder.Entity("IOTAgriBackend.Models.PumpSchedule", b =>
-                {
-                    b.Navigation("Occurrences");
                 });
 #pragma warning restore 612, 618
         }

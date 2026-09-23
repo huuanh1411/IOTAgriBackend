@@ -38,6 +38,9 @@ services:
       Mqtt__UseTls: "false"
       Mqtt__ClientId: iotagribackend-compose
       DeviceProvisioning__MqttHost: ${MQTT_PUBLIC_HOST}
+      PumpScheduling__Enabled: ${PUMP_SCHEDULING_ENABLED:-false}
+      PumpScheduling__PollSeconds: ${PUMP_SCHEDULING_POLL_SECONDS:-30}
+      PumpScheduling__DueWindowSeconds: ${PUMP_SCHEDULING_DUE_WINDOW_SECONDS:-90}
     depends_on:
       postgres:
         condition: service_healthy

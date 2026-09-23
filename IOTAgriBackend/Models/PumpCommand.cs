@@ -10,6 +10,7 @@ public enum PumpCommandStatus
 public enum PumpCommandSource
 {
     Manual,
+    Scheduled,
 }
 
 public class PumpCommand

@@ -16,6 +16,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<SensorReading> SensorReadings => Set<SensorReading>();
     public DbSet<PumpCommand> PumpCommands => Set<PumpCommand>();
+    public DbSet<PumpSchedule> PumpSchedules => Set<PumpSchedule>();
+    public DbSet<PumpScheduleOccurrence> PumpScheduleOccurrences => Set<PumpScheduleOccurrence>();
     public DbSet<DeviceAlert> DeviceAlerts => Set<DeviceAlert>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
 
@@ -67,6 +69,32 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                 .HasForeignKey(c => c.DeviceId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+        });
+
+        builder.Entity<PumpSchedule>(entity =>
+        {
+            entity.Property(schedule => schedule.TimeZone).HasMaxLength(128);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_PumpSchedules_WeekdayMask", "\"WeekdayMask\" > 0 AND \"WeekdayMask\" <= 127");
+                table.HasCheckConstraint("CK_PumpSchedules_DurationSeconds", "\"DurationSeconds\" > 0");
+            });
+
+            entity.HasOne(schedule => schedule.Device)
+                .WithMany(device => device.PumpSchedules)
+                .HasForeignKey(schedule => schedule.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PumpScheduleOccurrence>(entity =>
+        {
+            entity.HasIndex(occurrence => new { occurrence.ScheduleId, occurrence.OccurrenceUtc }).IsUnique();
+            entity.HasIndex(occurrence => occurrence.CommandId).IsUnique();
+
+            entity.HasOne(occurrence => occurrence.Schedule)
+                .WithMany(schedule => schedule.Occurrences)
+                .HasForeignKey(occurrence => occurrence.ScheduleId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<DeviceAlert>(entity =>
