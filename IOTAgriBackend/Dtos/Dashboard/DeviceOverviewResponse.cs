@@ -1,4 +1,5 @@
 using IOTAgriBackend.Dtos.Sensors;
+using IOTAgriBackend.Dtos.Alerts;
 
 namespace IOTAgriBackend.Dtos.Dashboard;
 
@@ -7,5 +8,6 @@ public record DeviceOverviewResponse(
     string Name,
     bool IsOnline,
     DateTime? LastSeenAt,
-    SensorReadingResponse? LatestReading
+    SensorReadingResponse? LatestReading,
+    IReadOnlyList<DeviceAlertResponse> ActiveAlerts
 );

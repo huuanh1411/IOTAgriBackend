@@ -9,7 +9,7 @@ public class Device
     // Secret credential used by the ESP32 to authenticate ingestion/control calls.
     public string DeviceKey { get; set; } = string.Empty;
 
-    public string OwnerId { get; set; } = string.Empty;
+    public string? OwnerId { get; set; }
     public ApplicationUser? Owner { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -17,6 +17,8 @@ public class Device
     public DateTime? LastSeenAt { get; set; }
     public bool IsPumpOn { get; set; }
     public DateTime? PumpStatusUpdatedAt { get; set; }
+    public double? HighTemperatureAlertC { get; set; }
+    public double? LowWaterLevelAlertPercent { get; set; }
 
     public string? ProvisioningCodeHash { get; set; }
     public DateTime? ProvisioningCodeExpiresAt { get; set; }
@@ -25,4 +27,5 @@ public class Device
 
     public ICollection<SensorReading> Readings { get; set; } = new List<SensorReading>();
     public ICollection<PumpCommand> PumpCommands { get; set; } = new List<PumpCommand>();
+    public ICollection<DeviceAlert> Alerts { get; set; } = new List<DeviceAlert>();
 }

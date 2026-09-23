@@ -165,9 +165,49 @@ public class MqttIngestionService : BackgroundService
         };
 
         db.SensorReadings.Add(reading);
+        await EvaluateAlertsAsync(db, device, reading);
         device.IsOnline = true;
         device.LastSeenAt = reading.RecordedAt;
         await db.SaveChangesAsync();
+    }
+
+    private static async Task EvaluateAlertsAsync(ApplicationDbContext db, Device device, SensorReading reading)
+    {
+        foreach (var type in Enum.GetValues<DeviceAlertType>())
+        {
+            var isUnsafe = DeviceAlertRules.IsUnsafe(
+                type,
+                reading.Temperature,
+                reading.WaterLevel,
+                device.HighTemperatureAlertC,
+                device.LowWaterLevelAlertPercent);
+            if (isUnsafe is null)
+            {
+                continue;
+            }
+
+            var activeAlert = await db.DeviceAlerts.SingleOrDefaultAsync(alert =>
+                alert.DeviceId == device.Id && alert.Type == type && alert.ResolvedAt == null);
+
+            if (isUnsafe.Value && activeAlert is null)
+            {
+                var (measuredValue, threshold) = type == DeviceAlertType.HighTemperature
+                    ? (reading.Temperature!.Value, device.HighTemperatureAlertC!.Value)
+                    : (reading.WaterLevel!.Value, device.LowWaterLevelAlertPercent!.Value);
+                db.DeviceAlerts.Add(new DeviceAlert
+                {
+                    DeviceId = device.Id,
+                    Type = type,
+                    MeasuredValue = measuredValue,
+                    Threshold = threshold,
+                    TriggeredAt = reading.RecordedAt,
+                });
+            }
+            else if (!isUnsafe.Value && activeAlert is not null)
+            {
+                activeAlert.ResolvedAt = reading.RecordedAt;
+            }
+        }
     }
 
     private async Task ProcessPumpStatusAsync(string deviceKey, byte[] payloadBytes, string topic)

@@ -16,6 +16,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<SensorReading> SensorReadings => Set<SensorReading>();
     public DbSet<PumpCommand> PumpCommands => Set<PumpCommand>();
+    public DbSet<DeviceAlert> DeviceAlerts => Set<DeviceAlert>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -39,7 +41,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.HasOne(d => d.Owner)
                 .WithMany(u => u.Devices)
                 .HasForeignKey(d => d.OwnerId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<SensorReading>(entity =>
@@ -65,6 +67,29 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                 .HasForeignKey(c => c.DeviceId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+        });
+
+        builder.Entity<DeviceAlert>(entity =>
+        {
+            entity.HasIndex(alert => new { alert.DeviceId, alert.Type })
+                .IsUnique()
+                .HasFilter("\"ResolvedAt\" IS NULL");
+
+            entity.HasOne(alert => alert.Device)
+                .WithMany(device => device.Alerts)
+                .HasForeignKey(alert => alert.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<AdminAuditLog>(entity =>
+        {
+            entity.Property(log => log.ActorUserId).HasMaxLength(450);
+            entity.Property(log => log.Action).HasMaxLength(64);
+            entity.Property(log => log.TargetType).HasMaxLength(64);
+            entity.Property(log => log.TargetId).HasMaxLength(450);
+            entity.Property(log => log.PreviousValue).HasMaxLength(450);
+            entity.Property(log => log.NewValue).HasMaxLength(450);
+            entity.HasIndex(log => log.CreatedAt);
         });
     }
 }

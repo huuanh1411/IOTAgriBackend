@@ -3,6 +3,7 @@ using System;
 using IOTAgriBackend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace IOTAgriBackend.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260921104101_AddAdminManagement")]
+    partial class AddAdminManagement
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -147,9 +150,6 @@ namespace IOTAgriBackend.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<double?>("HighTemperatureAlertC")
-                        .HasColumnType("double precision");
-
                     b.Property<bool>("IsOnline")
                         .HasColumnType("boolean");
 
@@ -158,9 +158,6 @@ namespace IOTAgriBackend.Migrations
 
                     b.Property<DateTime?>("LastSeenAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<double?>("LowWaterLevelAlertPercent")
-                        .HasColumnType("double precision");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -195,39 +192,6 @@ namespace IOTAgriBackend.Migrations
                         .IsUnique();
 
                     b.ToTable("Devices");
-                });
-
-            modelBuilder.Entity("IOTAgriBackend.Models.DeviceAlert", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("DeviceId")
-                        .HasColumnType("uuid");
-
-                    b.Property<double>("MeasuredValue")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTime?>("ResolvedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<double>("Threshold")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTime>("TriggeredAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeviceId", "Type")
-                        .IsUnique()
-                        .HasFilter("\"ResolvedAt\" IS NULL");
-
-                    b.ToTable("DeviceAlerts");
                 });
 
             modelBuilder.Entity("IOTAgriBackend.Models.PumpCommand", b =>
@@ -486,17 +450,6 @@ namespace IOTAgriBackend.Migrations
                     b.Navigation("Owner");
                 });
 
-            modelBuilder.Entity("IOTAgriBackend.Models.DeviceAlert", b =>
-                {
-                    b.HasOne("IOTAgriBackend.Models.Device", "Device")
-                        .WithMany("Alerts")
-                        .HasForeignKey("DeviceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Device");
-                });
-
             modelBuilder.Entity("IOTAgriBackend.Models.PumpCommand", b =>
                 {
                     b.HasOne("IOTAgriBackend.Models.Device", "Device")
@@ -588,8 +541,6 @@ namespace IOTAgriBackend.Migrations
 
             modelBuilder.Entity("IOTAgriBackend.Models.Device", b =>
                 {
-                    b.Navigation("Alerts");
-
                     b.Navigation("PumpCommands");
 
                     b.Navigation("Readings");

@@ -117,6 +117,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 
 app.MapAuthEndpoints();
+app.MapAdminEndpoints();
 app.MapDeviceEndpoints();
 app.MapDeviceProvisioningEndpoints();
 app.MapSensorEndpoints();

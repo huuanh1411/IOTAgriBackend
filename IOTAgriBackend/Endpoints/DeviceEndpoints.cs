@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using IOTAgriBackend.Data;
+using IOTAgriBackend.Dtos.Alerts;
 using IOTAgriBackend.Dtos.Devices;
 using IOTAgriBackend.Dtos.Pumps;
 using IOTAgriBackend.Models;
@@ -22,6 +23,9 @@ public static class DeviceEndpoints
         group.MapDelete("/{id:guid}", DeleteAsync);
         group.MapPost("/{id:guid}/pump/commands", SendPumpCommandAsync);
         group.MapGet("/{id:guid}/pump-commands", GetPumpCommandsAsync);
+        group.MapGet("/{id:guid}/alert-settings", GetAlertSettingsAsync);
+        group.MapPut("/{id:guid}/alert-settings", UpdateAlertSettingsAsync);
+        group.MapGet("/{id:guid}/alerts", GetAlertsAsync);
 
         return app;
     }
@@ -269,5 +273,111 @@ public static class DeviceEndpoints
             .ToListAsync();
 
         return Results.Ok(new PumpCommandHistoryPage(items, query.Page, query.PageSize, totalCount));
+    }
+
+    private static async Task<IResult> GetAlertSettingsAsync(
+        Guid id,
+        ClaimsPrincipal principal,
+        ApplicationDbContext db)
+    {
+        var userId = GetUserId(principal);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var settings = await db.Devices
+            .Where(device => device.Id == id && device.OwnerId == userId)
+            .Select(device => new DeviceAlertSettingsResponse(
+                device.HighTemperatureAlertC,
+                device.LowWaterLevelAlertPercent))
+            .FirstOrDefaultAsync();
+
+        return settings is null ? Results.NotFound() : Results.Ok(settings);
+    }
+
+    private static async Task<IResult> UpdateAlertSettingsAsync(
+        Guid id,
+        DeviceAlertSettingsRequest request,
+        ClaimsPrincipal principal,
+        ApplicationDbContext db)
+    {
+        var userId = GetUserId(principal);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var device = await db.Devices.FirstOrDefaultAsync(device => device.Id == id && device.OwnerId == userId);
+        if (device is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (!request.IsValid)
+        {
+            return Results.BadRequest(new { error = "Thresholds must be finite and water level must be between 0 and 100." });
+        }
+
+        device.HighTemperatureAlertC = request.HighTemperatureC;
+        device.LowWaterLevelAlertPercent = request.LowWaterLevelPercent;
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new DeviceAlertSettingsResponse(
+            device.HighTemperatureAlertC,
+            device.LowWaterLevelAlertPercent));
+    }
+
+    private static async Task<IResult> GetAlertsAsync(
+        Guid id,
+        ClaimsPrincipal principal,
+        ApplicationDbContext db,
+        [AsParameters] DeviceAlertHistoryQuery query)
+    {
+        var userId = GetUserId(principal);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var ownsDevice = await db.Devices.AnyAsync(device => device.Id == id && device.OwnerId == userId);
+        if (!ownsDevice)
+        {
+            return Results.NotFound();
+        }
+
+        if (!query.HasValidStatus)
+        {
+            return Results.BadRequest(new { error = "status must be active, resolved, or all." });
+        }
+
+        if (!query.HasValidPagination)
+        {
+            return Results.BadRequest(new { error = "page must be positive and pageSize must be between 1 and 100." });
+        }
+
+        var alerts = db.DeviceAlerts.Where(alert => alert.DeviceId == id);
+        if (query.Status == "active")
+        {
+            alerts = alerts.Where(alert => alert.ResolvedAt == null);
+        }
+        else if (query.Status == "resolved")
+        {
+            alerts = alerts.Where(alert => alert.ResolvedAt != null);
+        }
+
+        var totalCount = await alerts.CountAsync();
+        var items = await alerts
+            .OrderByDescending(alert => alert.TriggeredAt)
+            .ThenByDescending(alert => alert.Id)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
+            .ToListAsync();
+
+        return Results.Ok(new DeviceAlertPage(
+            items.Select(DeviceAlertResponse.From).ToList(),
+            query.Page,
+            query.PageSize,
+            totalCount));
     }
 }
