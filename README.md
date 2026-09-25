@@ -9,6 +9,7 @@ Backend API for an IoT hydroponics/agriculture monitoring system. Built with ASP
 - **ASP.NET Core Identity** + JWT bearer authentication (access + refresh tokens)
 - **MQTT** (MQTTnet) for real-time sensor ingestion from ESP32 devices, via a local Mosquitto broker in dev
 - **Swagger / OpenAPI** for API exploration in Development
+- **GitHub Actions CI** for tests, Release builds, and Docker image builds
 
 ## Features Implemented So Far
 
@@ -26,9 +27,16 @@ Backend API for an IoT hydroponics/agriculture monitoring system. Built with ASP
 - A background service (`MqttIngestionService`) subscribes, validates the device key, and persists readings
 - `GET /api/devices/{deviceId}/readings` — reading history for a device
 
+### Pump Control, Scheduling, and Alerts
+- Authenticated owners can issue pump commands, view command history, and manage pump schedules.
+- Sensor readings evaluate configured temperature and water-level thresholds, with active and resolved alert history.
+
 ### Dashboard / Aggregation
 - `GET /api/dashboard/overview` — all of a user's devices with latest reading + online status
 - `GET /api/devices/{deviceId}/readings/aggregated?interval=hour|day|...` — time-bucketed min/avg/max per metric, computed in PostgreSQL
+
+### Administration
+- Admins can manage user roles, view all devices/readings, reassign device ownership, and review audit logs.
 
 ## Local Development
 
@@ -46,6 +54,10 @@ Invoke-WebRequest http://localhost:8080/health
 
 Swagger UI is available at `http://localhost:8080/swagger`.
 
+## Continuous Integration
+
+GitHub Actions runs on pull requests and pushes to `main`. It restores dependencies, runs the test project, builds the API in Release mode, and builds the Docker image. It does not deploy to a VPS.
+
 ### Connecting an ESP32
 
 1. Register and sign in through Swagger, then create a device with `POST /api/devices`.
@@ -57,8 +69,7 @@ The local Mosquitto broker is anonymous and plaintext for trusted LAN developmen
 
 ## Planned / Not Yet Implemented
 
-- Pump control & scheduling
-- Alerts (threshold-based notifications)
-- Dockerfile + CI/CD pipeline
-- AWS deployment (ECS Fargate, RDS PostgreSQL, Secrets Manager, CloudWatch)
-- AWS IoT Core migration (per-device X.509 certificates in place of the current key-in-topic MQTT auth)
+- Production Compose hardening: reverse-proxy HTTPS, private API/PostgreSQL ports, restart policies, and off-server database backups
+- Production MQTT: TLS, per-device credentials, and topic ACLs (the current broker is intentionally anonymous and plaintext for local development)
+- ESP32 HTTPS and MQTT TLS support
+- VPS deployment and continuous deployment after the production stack is verified
